@@ -6,6 +6,7 @@ export interface BuildConfig {
     prodAccount: string,
     region: string,
     codeStarConnectionId: string,
+    firehoseName: string
 }
 
 
@@ -18,7 +19,8 @@ export function getBuildConfig( app: App ): BuildConfig {
         devAccount: buildEnv[ 'DevAccount' ],
         prodAccount: buildEnv[ 'ProdAccount' ],
         region: buildEnv[ 'Region' ],
-        codeStarConnectionId: buildEnv[ 'CodeStarConnectionId' ]
+        codeStarConnectionId: buildEnv[ 'CodeStarConnectionId' ],
+        firehoseName: buildEnv[ 'FirehoseName' ]
     }
 
     return buildConfig
