@@ -1,5 +1,5 @@
 {
-    "app": "npx ts-node --prefer-ts-exts bin/cdk-template.ts",
+    "app": "npx ts-node --prefer-ts-exts lib/main.ts",
     "watch": {
         "include": [
         "**"
@@ -30,14 +30,17 @@
         "@aws-cdk/core:target-partitions": [
             "aws",
             "aws-cn"
-        ]
-    },
+        ],
 
-    "config": {
-        "DeploymentAccount": "931504958986",
-        "DevAccount": "804826692257",
-        "ProdAccount": "504732938530",
-        "Region": "us-east-1",
-        "CodeStarConnectionId": "b4e76663-4634-40f1-8af8-1697dd16960f"
+        "config": {
+            "DeploymentAccount": "931504958986",
+            "DevAccount": "804826692257",
+            "ProdAccount": "504732938530",
+            "Region": "us-east-1",
+            "CodeStarConnectionId": "b4e76663-4634-40f1-8af8-1697dd16960f",
+            "FirehoseName": "FireholProcessingStream"
+        }
     }
+
+    
 }
