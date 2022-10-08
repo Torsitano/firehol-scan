@@ -36,11 +36,11 @@ export interface KinesisPayload {
 }
 
 export interface HttpResponse {
-    isBase64Endcoded: boolean,
+    isBase64Encoded: boolean,
     statusCode: 200,
     body: string,
     headers?: {
-        [ key: string ]: string
+        [ key: string ]: string | number | boolean
     },
     multiValueHeaders?: {
         [ key: string ]: string[]
@@ -51,7 +51,7 @@ export interface HttpResponse {
 
 
 //@ts-ignore
-export async function handler( event: APIGatewayEvent, context: APIGatewayEventRequestContext ) {
+export async function handler( event: APIGatewayEvent, context: APIGatewayEventRequestContext ): Promise<HttpResponse> {
 
     if ( !event.body ) {
         exit()
@@ -85,7 +85,22 @@ export async function handler( event: APIGatewayEvent, context: APIGatewayEventR
     }
 
 
-    return { "statusCode": 200, "body": "results" }
+    const body = JSON.stringify( {
+        requestId: payload.requestId,
+        timestamp: Date.now()
+    } )
+
+    const response: HttpResponse = {
+        isBase64Encoded: false,
+        statusCode: 200,
+        body: body,
+        headers: {
+            'content-length': body.length,
+            'content-type': 'application/json'
+        }
+    }
+
+    return response
 }
 
 
