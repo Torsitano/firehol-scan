@@ -81,7 +81,9 @@ export class FireholScannerStack extends Stack {
         } )
 
         const apiGwResource = fireholApiGateway.root.addResource( 'firehol' )
-        apiGwResource.addMethod( 'POST', new LambdaIntegration( fireholLambda ) )
+        apiGwResource.addMethod( 'POST', new LambdaIntegration( fireholLambda ), {
+            apiKeyRequired: true
+        } )
 
         const keyValue = StringParameter.valueForStringParameter( this, '/firehol/apikey' )
 
@@ -101,8 +103,8 @@ export class FireholScannerStack extends Stack {
 
         apiPlan.addApiKey( apiKey )
 
-        const vpc = Vpc.fromLookup( this, 'DevVpc', {
-            vpcName: 'dev-vpc'
+        const vpc = Vpc.fromLookup( this, 'Vpc', {
+            vpcName: buildConfig.vpcName
         } )
 
         const fireholFirehose = new CfnDeliveryStream( this, 'FireholStream', {
@@ -112,7 +114,7 @@ export class FireholScannerStack extends Stack {
                 endpointConfiguration: {
                     url: `${fireholApiGateway.url}firehol`,
                     accessKey: keyValue,
-                    name: 'FireholConfig'
+                    name: 'FireholScanner'
                 },
                 roleArn: fireholStreamRole.roleArn,
                 s3Configuration: {

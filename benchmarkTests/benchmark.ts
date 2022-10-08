@@ -1,6 +1,6 @@
 
 import { IPv4CidrRange } from 'ip-num/IPRange'
-//import ipRangeCheck from 'ip-range-check'
+import ipRangeCheck from 'ip-range-check'
 //import * as crypto from 'crypto'
 
 console.log( 'starting...' )
@@ -44,9 +44,9 @@ console.time( 'startsWith' )
 '10.1.1.1'.startsWith( '10.' || '192.168.' )
 console.timeEnd( 'startsWith' )
 
-// console.time( 'rangeCheck' )
-// ipRangeCheck( '1.1.1.1', '10.0.0.0/8' )
-// console.timeEnd( 'rangeCheck' )
+console.time( 'rangeCheck' )
+ipRangeCheck( '1.1.1.1', '10.0.0.0/24' )
+console.timeEnd( 'rangeCheck' )
 
 console.time( 'array' )
 for ( let test of testArray ) {

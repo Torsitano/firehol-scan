@@ -2,7 +2,8 @@ import { App } from 'aws-cdk-lib'
 
 export interface BuildConfig {
     region: string,
-    firehoseName: string
+    firehoseName: string,
+    vpcName: string
 }
 
 
@@ -12,7 +13,8 @@ export function getBuildConfig( app: App ): BuildConfig {
 
     const buildConfig: BuildConfig = {
         region: buildEnv[ 'Region' ],
-        firehoseName: buildEnv[ 'FirehoseName' ]
+        firehoseName: buildEnv[ 'FirehoseName' ],
+        vpcName: buildEnv[ 'VpcName' ]
     }
 
     return buildConfig

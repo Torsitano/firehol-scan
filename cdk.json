@@ -34,7 +34,8 @@
 
         "config": {
             "Region": "us-east-1",
-            "FirehoseName": "FireholProcessingStream"
+            "FirehoseName": "FireholProcessingStream",
+            "VpcName": "dev-vpc"
         }
     }
 
