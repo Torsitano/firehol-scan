@@ -1,9 +1,7 @@
 import { Stack, StackProps, Aws, Duration } from 'aws-cdk-lib'
 import { EndpointType, LambdaIntegration, MethodLoggingLevel, RestApi } from 'aws-cdk-lib/aws-apigateway'
-//@ts-ignore
 import { CfnFlowLog, Vpc } from 'aws-cdk-lib/aws-ec2'
 import { Effect, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam'
-//@ts-ignore
 import { CfnDeliveryStream } from 'aws-cdk-lib/aws-kinesisfirehose'
 import { Runtime } from 'aws-cdk-lib/aws-lambda'
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs'
@@ -14,8 +12,6 @@ import { BuildConfig } from '../getBuildconfig'
 
 
 export class FireholScannerStack extends Stack {
-    //@ts-ignore
-
     constructor ( scope: Construct, id: string, buildConfig: BuildConfig, props?: StackProps ) {
         super( scope, id, props )
 
@@ -36,10 +32,10 @@ export class FireholScannerStack extends Stack {
         fireholStreamRole.addToPolicy( new PolicyStatement( {
             effect: Effect.ALLOW,
             actions: [
-                'logs:*'
+                'logs:PutLogEvent'
             ],
             resources: [
-                `arn:aws:logs:${Aws.REGION}:${Aws.ACCOUNT_ID}:*:*`
+                `arn:aws:logs:${Aws.REGION}:${Aws.ACCOUNT_ID}:/aws/kinesisfirehose/${buildConfig.firehoseName}:*`
             ]
         } ) )
 
@@ -50,7 +46,9 @@ export class FireholScannerStack extends Stack {
             environment: {
                 NODE_OPTIONS: '--enable-source-maps',
                 REGION: Aws.REGION,
-                DEBUG_LOGS: 'true'
+                DEBUG_LOGS: 'true',
+                AWS_ACCOUNT_ID: Aws.ACCOUNT_ID,
+                TESTING: 'true'
             },
             // Kinesis data transformation Lambdas cannot run for more than 5 minutes
             timeout: Duration.seconds( 300 ),
@@ -60,7 +58,16 @@ export class FireholScannerStack extends Stack {
             memorySize: 512
         } )
 
-        //@ts-ignore
+        fireholLambda.addToRolePolicy( new PolicyStatement( {
+            effect: Effect.ALLOW,
+            actions: [
+                'securityhub:BatchImportFindings',
+                'securityhub:BatchUpdateFindings'
+            ],
+            resources: [ '*' ]
+        } ) )
+
+
         const fireholApiGateway = new RestApi( this, 'FireholApiGw', {
             restApiName: 'FireholApiGateway',
             deployOptions: {
@@ -83,7 +90,7 @@ export class FireholScannerStack extends Stack {
             value: keyValue
         } )
 
-        //@ts-ignore
+
         const apiPlan = fireholApiGateway.addUsagePlan( 'FireholUsagePlan', {
             name: 'FireholUsagePlan',
             apiStages: [ {
@@ -141,6 +148,8 @@ export class FireholScannerStack extends Stack {
 
         /**
          * At the time of writing this IaC, the L2 Construct for Flow Logs didn't support Kinesis as a destination
+         * The format for the Flow Log uses a reduced amount of information to keep payloads to the Lambda smaller
+         * 
          */
         new CfnFlowLog( this, 'FireholFlowLog', {
             resourceId: vpc.vpcId,
@@ -149,7 +158,7 @@ export class FireholScannerStack extends Stack {
             logDestination: fireholFirehose.attrArn,
             logDestinationType: 'kinesis-data-firehose',
             maxAggregationInterval: 60,
-            logFormat: '${srcaddr} ${dstaddr}'
+            logFormat: '${srcaddr} ${dstaddr} ${account-id} ${interface-id} ${dstport}'
         } )
 
     }
