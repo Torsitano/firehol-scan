@@ -3,6 +3,7 @@ import { LambdaLog } from 'lambda-log'
 import { decode } from 'js-base64'
 import ipRangeCheck from 'ip-range-check'
 import axios, { AxiosResponse } from 'axios'
+import { exit } from 'process'
 
 const DEBUG: boolean = ( process.env.DEBUG_LOGS === 'true' ) ?? false
 const redactLogProperties: string[] = [ 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN', 'X-Amz-Firehose-Access-Key' ]
@@ -34,6 +35,17 @@ export interface KinesisPayload {
     records: KinesisRecord[]
 }
 
+export interface HttpResponse {
+    isBase64Endcoded: boolean,
+    statusCode: 200,
+    body: string,
+    headers?: {
+        [ key: string ]: string
+    },
+    multiValueHeaders?: {
+        [ key: string ]: string[]
+    }
+}
 
 
 
@@ -42,7 +54,7 @@ export interface KinesisPayload {
 export async function handler( event: APIGatewayEvent, context: APIGatewayEventRequestContext ) {
 
     if ( !event.body ) {
-        return
+        exit()
     }
 
     if ( ipMap.size === 0 || ipRangesList.length === 0 ) {
@@ -72,9 +84,8 @@ export async function handler( event: APIGatewayEvent, context: APIGatewayEventR
         log.debug( badIps as any )
     }
 
-    return {
-        statusCode: 200
-    }
+
+    return { "statusCode": 200, "body": "results" }
 }
 
 
@@ -82,14 +93,14 @@ export async function buildList(): Promise<void> {
     console.time( 'build' )
 
 
-    const lists: AxiosResponse<any, any>[] = await Promise.all( sourceLists.map( async ( list ) => {
+    const lists: AxiosResponse<any, any>[] = await Promise.all( sourceLists.map( async ( list: string ) => {
         return axios.get( `https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/${list}` )
     } ) )
 
 
     for ( let list of lists ) {
 
-        const ips: string[] = list.data.split( '\n' ).filter( ( line: string ) => {
+        const ips: string[] = list.data.split( '\n' ).filter( ( line: string ): boolean => {
             return line.indexOf( "#" ) !== 0
         } )
 

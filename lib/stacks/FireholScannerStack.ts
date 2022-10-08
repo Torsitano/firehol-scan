@@ -2,7 +2,7 @@ import { Stack, StackProps, Aws, Duration } from 'aws-cdk-lib'
 import { EndpointType, LambdaIntegration, MethodLoggingLevel, RestApi } from 'aws-cdk-lib/aws-apigateway'
 //@ts-ignore
 import { CfnFlowLog, Vpc } from 'aws-cdk-lib/aws-ec2'
-import { Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam'
+import { Effect, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam'
 //@ts-ignore
 import { CfnDeliveryStream } from 'aws-cdk-lib/aws-kinesisfirehose'
 import { Runtime } from 'aws-cdk-lib/aws-lambda'
@@ -33,7 +33,15 @@ export class FireholScannerStack extends Stack {
         } )
 
         fireholStreamDeliveryBucket.grantPut( fireholStreamRole )
-
+        fireholStreamRole.addToPolicy( new PolicyStatement( {
+            effect: Effect.ALLOW,
+            actions: [
+                'logs:*'
+            ],
+            resources: [
+                `arn:aws:logs:${Aws.REGION}:${Aws.ACCOUNT_ID}:*:*`
+            ]
+        } ) )
 
         const fireholLambda = new NodejsFunction( this, 'FireholLambda', {
             functionName: 'FireholScanningLambda',
@@ -123,32 +131,12 @@ export class FireholScannerStack extends Stack {
                 bufferingHints: {
                     sizeInMBs: 3,
                     intervalInSeconds: 120
+                },
+                cloudWatchLoggingOptions: {
+                    enabled: true
                 }
             }
         } )
-        // extendedS3DestinationConfiguration: {
-        //     bucketArn: fireholStreamDeliveryBucket.bucketArn,
-        //     roleArn: fireholStreamRole.roleArn,
-        //     processingConfiguration: {
-        //         enabled: true,
-        //         processors: [
-        //             {
-        //                 type: 'Lambda',
-        //                 parameters: [
-        //                     {
-        //                         parameterName: 'LambdaArn',
-        //                         parameterValue: fireholLambda.functionArn
-        //                     }
-        //                 ]
-        //             }
-        //         ]
-        //     },
-        //     bufferingHints: {
-        //         sizeInMBs: 3,
-        //         intervalInSeconds: 300
-        //     }
-        // }
-        //} )
 
 
         /**
