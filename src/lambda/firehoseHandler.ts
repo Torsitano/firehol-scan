@@ -6,6 +6,8 @@ import axios, { AxiosResponse } from 'axios'
 import { SecurityHubClient, BatchImportFindingsCommand } from '@aws-sdk/client-securityhub'
 import { HttpResponse, IpRecord, IpRecordTuple, KinesisPayload, KinesisRecord } from './interfaces'
 import { BatchImportFindingsCommandInput } from '@aws-sdk/client-securityhub/dist-types/commands/BatchImportFindingsCommand'
+import { createHash } from 'crypto'
+
 
 const DEBUG: boolean = ( process.env.DEBUG_LOGS === 'true' ) ?? false
 const TESTING: boolean = ( process.env.TESTING === 'true' ) ?? false
@@ -66,6 +68,15 @@ export const log = new LambdaLog( {
 const ipMap = new Map<string, null>()
 const ipRangesList: string[] = []
 
+/**
+ * To minimize processing, a Map is kept throughout the Execution Environment lifetime as well
+ * The map uses the combination of the Source IP, Destination IP, and Destination Port as the key
+ * for the map. A Map is used instead of a Set because benchmarks showed that the calls to a Map
+ * were more performant 
+ */
+const dupCheck = new Map<string, null>()
+
+
 // Setup the client for SecurityHub in the initalization phase
 const securityHubClient = new SecurityHubClient( {
     region: AWS_REGION
@@ -98,14 +109,12 @@ export async function handler( event: APIGatewayEvent, _context: APIGatewayEvent
     const payload: KinesisPayload = JSON.parse( event.body )
 
     await checkRecords( payload )
-
     return buildResponse( payload )
 }
 
 /**
- * 
- * @param payload 
- * @returns 
+ * Checks the IP records from the Kinesis Firehose payload against the lists downloaded from the Firehol repo
+ * @param {KinesisPayload} payload - The payload from Kinesis that contains the IP records
  */
 async function checkRecords( payload: KinesisPayload ): Promise<void> {
     const badIps: IpRecord[] = []
@@ -122,12 +131,23 @@ async function checkRecords( payload: KinesisPayload ): Promise<void> {
             destinationPort: ipRecordTuple[ 4 ]
         }
 
+
         // any record where the destination is a local address is skipped for efficiency
         for ( let privateRange of rfc1918 ) {
             if ( ipRecord.destinationIp.startsWith( privateRange ) ) {
                 return
             }
         }
+
+        // See notes at top of file for dupCheck comments
+        let dupKey = ipRecord.sourceIp + ipRecord.destinationIp + ipRecord.destinationPort
+
+        if ( dupCheck.has( dupKey ) ) {
+            return
+        } else {
+            dupCheck.set( dupKey, null )
+        }
+
 
         /**
          * Here we check against the IP Map, but only check against ranges if the IP is NOT found in the 
@@ -151,35 +171,40 @@ async function checkRecords( payload: KinesisPayload ): Promise<void> {
 
     } ) )
 
-    if ( badIps.length !== 0 ) {
-        log.debug( badIps as any )
-    }
-
 }
 
 /**
- * 
+ * Creates/updates a finding in Security Hub when malicious traffic is identified.
  * @param {IpRecord} ipRecord 
  */
 async function createSecurityHubFinding( ipRecord: IpRecord ): Promise<void> {
 
     const currentTime = ( new Date ).toISOString()
 
+    /**
+     * A hash of the Source IP, Destination IP, and Destination Port is used as the ID of the finding.
+     * This prevents duplicate Security Hub findings for the same issue since network traffic is likely to
+     * be an ongoing thing until the issue is resolved.
+     */
+    const id = createHash( 'sha1' )
+        .update( ipRecord.sourceIp + ipRecord.destinationIp + ipRecord.destinationPort )
+        .digest( 'hex' )
+
     const createFindingCommandInput: BatchImportFindingsCommandInput = {
         Findings: [
             {
                 SchemaVersion: '2018-10-08',
                 AwsAccountId: AWS_ACCOUNT_ID,
-                Id: 'firehol-scanner',
+                Id: id,
                 CreatedAt: currentTime,
                 UpdatedAt: currentTime,
                 FirstObservedAt: currentTime,
                 LastObservedAt: currentTime,
-                ProductArn: `arn:aws:securityhub:${AWS_REGION}:${AWS_ACCOUNT_ID}:product/${AWS_ACCOUNT_ID}/default"`,
+                ProductArn: `arn:aws:securityhub:${AWS_REGION}:${AWS_ACCOUNT_ID}:product/${AWS_ACCOUNT_ID}/default`,
                 Description: `An IP within the environment has communicating with an authorized IP address.`
                     + ` - Source IP: ${ipRecord.sourceIp} - Destination IP: ${ipRecord.destinationIp} - Destination Port: `
                     + `${ipRecord.destinationPort} - Interface ID: ${ipRecord.interfaceId}`,
-                Title: `Source IP ${ipRecord} Communicating With Unauthorized IP`,
+                Title: `Source IP ${ipRecord.sourceIp} Communicating With Unauthorized IP ${ipRecord.destinationIp}`,
                 GeneratorId: 'firehol-scanner',
                 Resources: [
                     {
@@ -196,9 +221,26 @@ async function createSecurityHubFinding( ipRecord: IpRecord ): Promise<void> {
                 ],
                 Network: {
                     DestinationIpV4: ipRecord.destinationIp,
-                    DestinationPort: ipRecord.destinationPort,
+                    DestinationPort: Number( ipRecord.destinationPort ),
                     SourceIpV4: ipRecord.sourceIp
-                }
+                },
+                Severity: {
+                    Label: 'MEDIUM',
+                    Original: 'MEDIUM'
+                },
+                FindingProviderFields: {
+                    Confidence: 100,
+                    Severity: {
+                        Label: 'MEDIUM',
+                        Original: 'MEDIUM'
+                    },
+                    Types: [
+                        'Unusual Behaviors/IP address'
+                    ]
+                },
+                Types: [
+                    'Unusual Behaviors/IP address'
+                ]
             }
         ]
     }
@@ -206,7 +248,8 @@ async function createSecurityHubFinding( ipRecord: IpRecord ): Promise<void> {
     log.debug( createFindingCommandInput as any )
 
     try {
-        await securityHubClient.send( new BatchImportFindingsCommand( createFindingCommandInput ) )
+        const securityHubResponse = await securityHubClient.send( new BatchImportFindingsCommand( createFindingCommandInput ) )
+        log.debug( securityHubResponse as any )
     } catch ( err ) {
         log.error( err as any )
     }

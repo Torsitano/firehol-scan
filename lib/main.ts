@@ -10,8 +10,7 @@ const buildConfig = getBuildConfig( app )
 
 new FireholScannerStack( app, 'FireholScannerStack', buildConfig, {
     env: {
-        account: buildConfig.devAccount,
-        region: buildConfig.region
+        account: process.env.CDK_DEPLOY_ACCOUNT || process.env.CDK_DEFAULT_ACCOUNT,
+        region: process.env.CDK_DEPLOY_REGION || process.env.CDK_DEFAULT_REGION
     }
-
 } )

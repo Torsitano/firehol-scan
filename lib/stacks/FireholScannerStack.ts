@@ -101,22 +101,6 @@ export class FireholScannerStack extends Stack {
 
         apiPlan.addApiKey( apiKey )
 
-        new NodejsFunction( this, 'BenchmarkLambda', {
-            functionName: 'FireholBenchmark',
-            entry: './src/lambda/benchmark.ts',
-            runtime: Runtime.NODEJS_16_X,
-            environment: {
-                NODE_OPTIONS: '--enable-source-maps'
-            },
-            timeout: Duration.seconds( 120 ),
-            bundling: {
-                sourceMap: true
-            },
-            memorySize: 4096,
-            handler: 'handler'
-        } )
-
-        //@ts-ignore
         const vpc = Vpc.fromLookup( this, 'DevVpc', {
             vpcName: 'dev-vpc'
         } )

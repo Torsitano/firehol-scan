@@ -1,6 +1,7 @@
 
 import { IPv4CidrRange } from 'ip-num/IPRange'
 import ipRangeCheck from 'ip-range-check'
+import * as crypto from 'crypto'
 
 console.log( 'starting...' )
 
@@ -52,6 +53,14 @@ console.timeEnd( 'rangeCheck' )
 //     ipArray.includes( test )
 // }
 // console.timeEnd( 'array' )
+
+//@ts-ignore
+
+const str = '192.168.1.1' + '1.1.1.1' + '443'
+
+const hash = crypto.createHash( 'md5' ).update( str )
+console.log( hash )
+console.log( hash.digest() )
 
 //@ts-ignore
 export async function handler( event: any, context: any ): Promise<void> {
