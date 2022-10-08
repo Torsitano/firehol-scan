@@ -47,7 +47,7 @@ The Lambda looks for an environment variable called `TESTING` that adds `8.8.8.8
 While planning this out I had serious concerns around the efficiency of the code, since processing all VPC Flow Logs has the potential to be pretty demanding. I did the following tests and made the following decisions with that consideration in mind.
 
 
-### Basic Benchmarking
+## Basic Benchmarking
 
 Since there was the potential to hold millions of IP addresses that would constantly be scanned against, I wanted to avoid the approach of repeately iterating through an array of IP address for each log event.
 
@@ -66,14 +66,14 @@ array: 356.868ms
 Map and Set were pretty similar, but `map.has()` was roughly 16,850x faster than iterating through the array. This is substantial when attempting to do near-realtime scanning.
 
 
-### Expanding vs Not Expanding IP Ranges
+## Expanding vs Not Expanding IP Ranges
 
 My initial intent was to take the CIDR ranges from the lists and expand them to individual IPs, since the performance of the Map is so good and doesn't increase much with size. Unfortunately this wasn't as straightforward as intended, the process of expanding many CIDR ranges caused RAM utilization issues. While giving the Lambda a lot of RAM and increasing what node was allowed to use likely would have allowed it to run, I didn't like this approach.
 
 I may revisit in the future to see if there is a way to streamline this process and avoid memory issues, but was more than I wanted to do at the moment. Instead, IPs are checked against CIDR ranges using [ip-range-check](https://github.com/danielcompton/ip-range-check), which isn't nearly as performant as a Map.
 
 
-### Only Checking Destination IP, Not Checking Private IPs, and Removing Duplicate IPs
+## Only Checking Destination IP, Not Checking Private IPs, and Removing Duplicate IPs
 
 Since the check against a CIDR range is much less performant than querying a Map, and every list must be checked for each IP, I wanted to minimize the number of IPs that I was checking as much as possible.
 
