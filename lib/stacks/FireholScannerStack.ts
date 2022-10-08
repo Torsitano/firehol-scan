@@ -111,7 +111,7 @@ export class FireholScannerStack extends Stack {
             deliveryStreamType: 'DirectPut',
             httpEndpointDestinationConfiguration: {
                 endpointConfiguration: {
-                    url: fireholApiGateway.url,
+                    url: `${fireholApiGateway.url}firehol`,
                     accessKey: keyValue,
                     name: 'FireholConfig'
                 },
