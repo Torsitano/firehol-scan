@@ -1,6 +1,6 @@
 # Firehol Scanner
 
-This repository contains IaC and TypeScript code to deploy a near-realtime VPC Flow Logs scanner. AWS recently released the ability to send [VPC Flow Logs directly to Kinesis](https://aws.amazon.com/blogs/networking-and-content-delivery/introducing-amazon-vpc-flow-logs-kinesis-data-firehose/), so this project was an exploration into that feature as well as an opportunity to get some more exposure to Kinesis Firehose.
+This repository contains IaC and TypeScript code to deploy a near-real time VPC Flow Logs scanner. AWS recently released the ability to send [VPC Flow Logs directly to Kinesis](https://aws.amazon.com/blogs/networking-and-content-delivery/introducing-amazon-vpc-flow-logs-kinesis-data-firehose/), so this project was an exploration into that feature as well as an opportunity to get some more exposure to Kinesis Firehose.
 
 
 ## Architecture
@@ -14,16 +14,16 @@ Flow Logs are sent directly to the Kinesis Firehose Stream using the new feature
 
 The scanner works by comparing IP addresses from Flow Logs against IP Lists retrieved from the [Firehol blocklist-ipsets GitHub repo](https://github.com/firehol/blocklist-ipsets).
 
-The scanner checks agsinst both individual IP addresses and CIDR ranges, and if a match is found, a SecurityHub Finding is generated. 
+The scanner checks against both individual IP addresses and CIDR ranges, and if a match is found, a SecurityHub Finding is generated. 
 
 Currently the default configuration for the scanner is to check against all four levels of the Firehol lists, but others can be added by name in the Lambda.
 
 
 ## Lambda Execution Environment
 
-The way that the [Lambda Execution Environment](https://docs.aws.amazon.com/lambda/latest/operatorguide/execution-environments.html) works was taken into consideration and leveraged for this solution. Variables/actions completed before the Handler is executed allows certain data to persist between invocations, provided the environment hasn't been cleaned up. Since some of the more inefficient parts of the Lambda include retriving IP Lists, this is only done when a new Execution Environment is setup. The data is then reused throughout invocations, along with other infomation such as the `dupCheck`.
+The way that the [Lambda Execution Environment](https://docs.aws.amazon.com/lambda/latest/operatorguide/execution-environments.html) works was taken into consideration and leveraged for this solution. Variables/actions completed before the Handler is executed allows certain data to persist between invocations, provided the environment hasn't been cleaned up. Since some of the more inefficient parts of the Lambda include retriving IP Lists, this is only done when a new Execution Environment is setup. The data is then reused throughout invocations, along with other information such as the `dupCheck`.
 
-In situations where there isn't a high load and the environment is cleaned up often, the latency from grabbing lists is irrelevant. In sitatuions with high load, the envrionment is much more likely to persist, which eliminates a lot of that traffic.
+In situations where there isn't a high load and the environment is cleaned up often, the latency from grabbing lists is irrelevant. In situations with high load, the environment is much more likely to persist, which eliminates a lot of that traffic.
 
 Additionally, since the environments will be recycled fairly regularly, this ensures that the IP Lists the Lambda is using are always up to date from what is in GitHub.
 
@@ -49,7 +49,7 @@ While planning this out I had serious concerns around the efficiency of the code
 
 ## Basic Benchmarking
 
-Since there was the potential to hold millions of IP addresses that would constantly be scanned against, I wanted to avoid the approach of repeately iterating through an array of IP address for each log event.
+Since there was the potential to hold millions of IP addresses that would constantly be scanned against, I wanted to avoid the approach of repeatedly iterating through an array of IP address for each log event.
 
 I did some basic benchmarking with Maps, Sets, and Arrays. I found that in very small sets, using `array.includes()` actually outperformed Maps and Sets, but this was with sets small enough to not really matter(~few hundred IPs). When expanding to much larger sets, Maps and Sets *drastically* outperformed Arrays, which was expected. During testing Maps usually outperformed Sets.
 
@@ -63,7 +63,7 @@ map: 0.021ms
 array: 356.868ms
 ```
 
-Map and Set were pretty similar, but `map.has()` was roughly 16,850x faster than iterating through the array. This is substantial when attempting to do near-realtime scanning.
+Map and Set were pretty similar, but `map.has()` was roughly 16,850x faster than iterating through the array. This is substantial when attempting to do near-real time scanning.
 
 
 ## Expanding vs Not Expanding IP Ranges
