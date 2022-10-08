@@ -2,7 +2,7 @@
     "_logLevel": "debug",
     "msg": {
         "invocationId": "d9ee1ce4-d893-4992-bec6-33239a185e4f",
-        "deliveryStreamArn": "arn:aws:firehose:us-east-1:804826692257:deliverystream/FireholProcessingStream",
+        "deliveryStreamArn": "arn:aws:firehose:us-east-1:123456789123:deliverystream/FireholProcessingStream",
         "region": "us-east-1",
         "records": [
             {
