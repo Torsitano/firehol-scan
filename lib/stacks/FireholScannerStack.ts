@@ -50,7 +50,6 @@ export class FireholScannerStack extends Stack {
                 AWS_ACCOUNT_ID: Aws.ACCOUNT_ID,
                 TESTING: 'true'
             },
-            // Kinesis data transformation Lambdas cannot run for more than 5 minutes
             timeout: Duration.seconds( 300 ),
             bundling: {
                 sourceMap: true
@@ -81,9 +80,7 @@ export class FireholScannerStack extends Stack {
         } )
 
         const apiGwResource = fireholApiGateway.root.addResource( 'firehol' )
-        apiGwResource.addMethod( 'POST', new LambdaIntegration( fireholLambda ), {
-            apiKeyRequired: true
-        } )
+        apiGwResource.addMethod( 'POST', new LambdaIntegration( fireholLambda ) )
 
         const keyValue = StringParameter.valueForStringParameter( this, '/firehol/apikey' )
 

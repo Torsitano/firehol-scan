@@ -3,11 +3,13 @@
 This repository contains IaC and TypeScript code to deploy a near-real time VPC Flow Logs scanner. AWS recently released the ability to send [VPC Flow Logs directly to Kinesis](https://aws.amazon.com/blogs/networking-and-content-delivery/introducing-amazon-vpc-flow-logs-kinesis-data-firehose/), so this project was an exploration into that feature as well as an opportunity to get some more exposure to Kinesis Firehose.
 
 
+
 ## Architecture
 
 The flow of the solution is: **Flow Logs -> Kinesis Firehose -> API GW -> Lambda -> SecurityHub**
 
 Flow Logs are sent directly to the Kinesis Firehose Stream using the new feature added by AWS. The Kinesis Firehose is configured for an HTTP Endpoint, provided by the API Gateway, which passes the traffic back to the Lambda. 
+
 
 
 ## Scanner
@@ -19,6 +21,7 @@ The scanner checks against both individual IP addresses and CIDR ranges, and if 
 Currently the default configuration for the scanner is to check against all four levels of the Firehol lists, but others can be added by name in the Lambda.
 
 
+
 ## Lambda Execution Environment
 
 The way that the [Lambda Execution Environment](https://docs.aws.amazon.com/lambda/latest/operatorguide/execution-environments.html) works was taken into consideration and leveraged for this solution. Variables/actions completed before the Handler is executed allows certain data to persist between invocations, provided the environment hasn't been cleaned up. Since some of the more inefficient parts of the Lambda include retriving IP Lists, this is only done when a new Execution Environment is setup. The data is then reused throughout invocations, along with other information such as the `dupCheck`.
@@ -26,6 +29,7 @@ The way that the [Lambda Execution Environment](https://docs.aws.amazon.com/lamb
 In situations where there isn't a high load and the environment is cleaned up often, the latency from grabbing lists is irrelevant. In situations with high load, the environment is much more likely to persist, which eliminates a lot of that traffic.
 
 Additionally, since the environments will be recycled fairly regularly, this ensures that the IP Lists the Lambda is using are always up to date from what is in GitHub.
+
 
 
 ## Integration with SecurityHub
@@ -37,14 +41,17 @@ If SecurityHub is in use and configured appropriately, alerts from SecurityHub l
 A SHA1 hash of the Source IP, Destination IP, and Destination Port is used as the Finding ID for the SecurityHub Finding. This prevents duplicate alerts from being generated from the same traffic since issues will take time to investigate and resolve, but allows sufficient granularity to identify if a source is reaching out to multiple unwanted destinations, or across multiple ports.
 
 
+
 ## Testing
 
 The Lambda looks for an environment variable called `TESTING` that adds `8.8.8.8` and `1.1.1.0/24` to the Map/Range List. You can test the solution end-to-end by pinging/telneting `8.8.8.8` and `1.1.1.1` from an EC2 Instance and verify that SecurityHub Findings are created.
 
 
+
 # Efficiency/Optimization/Benchmarks
 
 While planning this out I had serious concerns around the efficiency of the code, since processing all VPC Flow Logs has the potential to be pretty demanding. I did the following tests and made the following decisions with that consideration in mind.
+
 
 
 ## Basic Benchmarking
@@ -71,6 +78,7 @@ Map and Set were pretty similar, but `map.has()` was roughly 16,850x faster than
 My initial intent was to take the CIDR ranges from the lists and expand them to individual IPs, since the performance of the Map is so good and doesn't increase much with size. Unfortunately this wasn't as straightforward as intended, the process of expanding many CIDR ranges caused RAM utilization issues. While giving the Lambda a lot of RAM and increasing what node was allowed to use likely would have allowed it to run, I didn't like this approach.
 
 I may revisit in the future to see if there is a way to streamline this process and avoid memory issues, but was more than I wanted to do at the moment. Instead, IPs are checked against CIDR ranges using [ip-range-check](https://github.com/danielcompton/ip-range-check), which isn't nearly as performant as a Map.
+
 
 
 ## Only Checking Destination IP, Not Checking Private IPs, and Removing Duplicate IPs
