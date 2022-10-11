@@ -35,7 +35,3 @@ export interface IpRecord {
     interfaceId: string,
     destinationPort: number
 }
-
-export interface SecurityHubFinding {
-
-}
