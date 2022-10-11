@@ -14,8 +14,9 @@ export class FireholScannerStack extends Stack {
     constructor ( scope: Construct, id: string, buildConfig: BuildConfig, props?: StackProps ) {
         super( scope, id, props )
 
-        const fireholStreamDeliveryBucket = new Bucket( this, 'FireholDeliveryBucket', {
-            bucketName: `${Aws.ACCOUNT_ID}-${Aws.REGION}-firehol-delivery`,
+        // Used to store failure messages if Kinesis is unable to deliver to the API Gateway
+        const fireholStreamFailureBucket = new Bucket( this, 'FireholFailureBucket', {
+            bucketName: `${Aws.ACCOUNT_ID}-${Aws.REGION}-firehol-delivery-failure`,
             blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
             encryption: BucketEncryption.S3_MANAGED,
             enforceSSL: true,
@@ -27,7 +28,11 @@ export class FireholScannerStack extends Stack {
             roleName: `FireholKinesisRole`
         } )
 
-        fireholStreamDeliveryBucket.grantPut( fireholStreamRole )
+        /**
+         * Grants the Firehol Service Role permissions to the S3 Bucket for failed delivery, and
+         * allows the Role permissions to CloudWatch Logs for failure logs
+         */
+        fireholStreamFailureBucket.grantPut( fireholStreamRole )
         fireholStreamRole.addToPolicy( new PolicyStatement( {
             effect: Effect.ALLOW,
             actions: [
@@ -38,6 +43,13 @@ export class FireholScannerStack extends Stack {
             ]
         } ) )
 
+        /**
+         * The Lambda that does all the processing of logs. AWS_ACCOUNT_ID is *REQUIRED* for the Lambda
+         * to function, it needs the Account ID for SecurityHub
+         * 
+         * TODO: Redo this Lambda to get the Account ID from the Flow Logs instead to allow aggregation
+         * from multiple accounts
+         */
         const fireholLambda = new NodejsFunction( this, 'FireholLambda', {
             functionName: 'FireholScanningLambda',
             entry: './src/lambda/firehoseHandler.ts',
@@ -56,6 +68,7 @@ export class FireholScannerStack extends Stack {
             memorySize: 512
         } )
 
+        // Grants permission to the Lambda to create/update SecurityHub Findings
         fireholLambda.addToRolePolicy( new PolicyStatement( {
             effect: Effect.ALLOW,
             actions: [
@@ -91,12 +104,11 @@ export class FireholScannerStack extends Stack {
             httpEndpointDestinationConfiguration: {
                 endpointConfiguration: {
                     url: `${fireholApiGateway.url}firehol`,
-                    // accessKey: keyValue,
                     name: 'FireholScanner'
                 },
                 roleArn: fireholStreamRole.roleArn,
                 s3Configuration: {
-                    bucketArn: fireholStreamDeliveryBucket.bucketArn,
+                    bucketArn: fireholStreamFailureBucket.bucketArn,
                     roleArn: fireholStreamRole.roleArn
                 },
                 bufferingHints: {
