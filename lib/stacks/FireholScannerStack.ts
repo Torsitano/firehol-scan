@@ -6,7 +6,6 @@ import { CfnDeliveryStream } from 'aws-cdk-lib/aws-kinesisfirehose'
 import { Runtime } from 'aws-cdk-lib/aws-lambda'
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs'
 import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3'
-import { StringParameter } from 'aws-cdk-lib/aws-ssm'
 import { Construct } from 'constructs'
 import { BuildConfig } from '../getBuildconfig'
 
@@ -82,24 +81,6 @@ export class FireholScannerStack extends Stack {
         const apiGwResource = fireholApiGateway.root.addResource( 'firehol' )
         apiGwResource.addMethod( 'POST', new LambdaIntegration( fireholLambda ) )
 
-        const keyValue = StringParameter.valueForStringParameter( this, '/firehol/apikey' )
-
-        const apiKey = fireholApiGateway.addApiKey( 'FireholApiKey', {
-            apiKeyName: 'FireholApiKey',
-            value: keyValue
-        } )
-
-
-        const apiPlan = fireholApiGateway.addUsagePlan( 'FireholUsagePlan', {
-            name: 'FireholUsagePlan',
-            apiStages: [ {
-                api: fireholApiGateway,
-                stage: fireholApiGateway.deploymentStage
-            } ]
-        } )
-
-        apiPlan.addApiKey( apiKey )
-
         const vpc = Vpc.fromLookup( this, 'Vpc', {
             vpcName: buildConfig.vpcName
         } )
@@ -110,7 +91,7 @@ export class FireholScannerStack extends Stack {
             httpEndpointDestinationConfiguration: {
                 endpointConfiguration: {
                     url: `${fireholApiGateway.url}firehol`,
-                    accessKey: keyValue,
+                    // accessKey: keyValue,
                     name: 'FireholScanner'
                 },
                 roleArn: fireholStreamRole.roleArn,

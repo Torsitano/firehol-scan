@@ -101,3 +101,4 @@ Lastly, the Lambda generates and keeps a Map of consisting of the Source IP, Des
 - Add the ability to pass in additional lists as desired
 - Convert the Flow Logs IaC to the L2 Construct when it supports Kinesis as a destination
 - Better severity handling for Findings
+- Add unit tests
