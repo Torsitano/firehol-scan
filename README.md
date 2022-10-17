@@ -79,7 +79,7 @@ My initial intent was to take the CIDR ranges from the lists and expand them to 
 
 My first pass on this was to use a function available through a package called [ip-range-check](https://github.com/danielcompton/ip-range-check) and check every IP against an array of all the CIDR ranges, but this took about 1 ms per CIDR range. This causes significant delays when checking a lot of IPs, and was not ideal.
 
-To get around this, I modified the code to store the CIDR ranges as a Map instead, with the value set as an object of the first and last IP in the CIDR range. The provided IP is split by octet, converted to a number, and checked to see if it is within the first and last IP. This approach is approximately 50x faster than the previous `ip-range-check` approach.
+To get around this, I modified the code to store the CIDR ranges as a Map instead, with the value set as an object of the first and last IP in the CIDR range. The provided IP is split by octet, converted to a number, and checked to see if it is within the first and last IP. This approach is approximately 50x faster than the previous `ip-range-check` approach, and was only taking about `0.02 ms`, give or take a few thousandths of a millisecond.
 
 The first/last IPs are split for each compare, it was easier to work with the map in this format and the speed difference was only `~.002 ms` per CIDR range in my testing.
 
