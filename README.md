@@ -73,19 +73,21 @@ array: 356.868ms
 Map and Set were pretty similar, but `map.has()` was roughly 16,850x faster than iterating through the array. This is substantial when attempting to do near-real time scanning.
 
 
-## Expanding vs Not Expanding IP Ranges
+## Checking CIDR Ranges for an IP
 
 My initial intent was to take the CIDR ranges from the lists and expand them to individual IPs, since the performance of the Map is so good and doesn't increase much with size. Unfortunately this wasn't as straightforward as intended, the process of expanding many CIDR ranges caused RAM utilization issues. While giving the Lambda a lot of RAM and increasing what node was allowed to use likely would have allowed it to run, I didn't like this approach.
 
-I may revisit in the future to see if there is a way to streamline this process and avoid memory issues, but was more than I wanted to do at the moment. Instead, IPs are checked against CIDR ranges using [ip-range-check](https://github.com/danielcompton/ip-range-check), which isn't nearly as performant as a Map.
+My first pass on this was to use a function available through a package called [ip-range-check](https://github.com/danielcompton/ip-range-check) and check every IP against an array of all the CIDR ranges, but this took about 1 ms per CIDR range. This causes significant delays when checking a lot of IPs, and was not ideal.
 
+To get around this, I modified the code to store the CIDR ranges as a Map instead, with the value set as an object of the first and last IP in the CIDR range. The provided IP is split by octet, converted to a number, and checked to see if it is within the first and last IP. This approach is approximately 50x faster than the previous `ip-range-check` approach.
 
+The first/last IPs are split for each compare, it was easier to work with the map in this format and the speed difference was only `~.002 ms` per CIDR range in my testing.
 
 ## Only Checking Destination IP, Not Checking Private IPs, and Removing Duplicate IPs
 
 Since the check against a CIDR range is much less performant than querying a Map, and every list must be checked for each IP, I wanted to minimize the number of IPs that I was checking as much as possible.
 
-The easiest decision for that was to not check private IPs. Since the intent is to scan for malicious activity against public IP lists, there was no reason to scan traffic going to IPs in the RFC1918 space. This is done using `startsWith()` and looking at the first octets of each IP, skipping over anything in the `10.`, `192.168`, and `172.16`-`172.31` space.
+The easiest decision for that was to not check private IPs. Since the intent is to scan for malicious activity against public IP lists, there was no reason to scan traffic going to IPs in the RFC1918 space. This is done using `startsWith()` and looking at the first octets of each IP, skipping over anything in the `10.`, `192.168`, and `172.16`-`172.31` space. `startsWith()` was chosen over other options because of speed, in my testing it took roughly `0.006 ms` vs `~1 ms` for the `ip-range-check` function.
 
 I also figured that only looking at outbound traffic was sufficient for this. Since in most situations network traffic will be two ways(for established connections), there was no reason to check both source and destination IPs for each event. This also prevents scanning of traffic that could be rejected by your servers/Security Groups/etc, which is traffic that wouldn't be worth alerting on.
 
@@ -98,7 +100,8 @@ Lastly, the Lambda generates and keeps a Map of consisting of the Source IP, Des
 - Move list config out of Lambda and into a config file
 - Modify retrieval method to get more up to date lists from the site, since there is a delay with GitHub
 - Convert to Rust for better speed
-- Add the ability to pass in additional lists as desired
+- Add the ability to pass in additional non-Firehol lists as desired
 - Convert the Flow Logs IaC to the L2 Construct when it supports Kinesis as a destination
 - Better severity handling for Findings
 - Add unit tests
+- Evaluate the Kinesis Transform option to expand CIDR ranges and remove duplicates/extra IPs

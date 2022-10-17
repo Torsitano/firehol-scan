@@ -1,7 +1,7 @@
 import { APIGatewayEvent, APIGatewayEventRequestContext } from 'aws-lambda'
 import { LambdaLog } from 'lambda-log'
 import { decode } from 'js-base64'
-import ipRangeCheck from 'ip-range-check'
+import { IPv4CidrRange } from 'ip-num/IPRange'
 import axios, { AxiosResponse } from 'axios'
 import { SecurityHubClient, BatchImportFindingsCommand } from '@aws-sdk/client-securityhub'
 import { HttpResponse, IpRecord, IpRecordTuple, KinesisPayload, KinesisRecord } from './interfaces'
@@ -58,6 +58,7 @@ export const log = new LambdaLog( {
 } )
 
 
+
 /**
  * The IP Map and the IP Range List are instantiated as global variables so they can be reused between Lambda
  * invocations as long as the execution environment is still around.
@@ -66,7 +67,7 @@ export const log = new LambdaLog( {
  * https://docs.aws.amazon.com/lambda/latest/operatorguide/execution-environments.html
  */
 const ipMap = new Map<string, null>()
-const ipRangesList: string[] = []
+const ipRanges = new Map<string, { first: string, last: string }>()
 
 /**
  * To minimize processing, a Map is kept throughout the Execution Environment lifetime as well
@@ -101,7 +102,7 @@ export async function handler( event: APIGatewayEvent, _context: APIGatewayEvent
      * This will check to see if either the Map or the Array are empty, and if so, the buildList() function
      * will be executed to retrieve the lists from the Firehol repo
      */
-    if ( ipMap.size === 0 || ipRangesList.length === 0 ) {
+    if ( ipMap.size === 0 || ipRanges.size === 0 ) {
         log.debug( 'Building list since at least one is empty' )
         await buildList()
     }
@@ -116,7 +117,7 @@ export async function handler( event: APIGatewayEvent, _context: APIGatewayEvent
  * Checks the IP records from the Kinesis Firehose payload against the lists downloaded from the Firehol repo
  * @param {KinesisPayload} payload - The payload from Kinesis that contains the IP records
  */
-async function checkRecords( payload: KinesisPayload ): Promise<void> {
+export async function checkRecords( payload: KinesisPayload ): Promise<void> {
     const badIps: IpRecord[] = []
 
     await Promise.all( payload.records.map( async ( record: KinesisRecord ): Promise<void> => {
@@ -163,7 +164,7 @@ async function checkRecords( payload: KinesisPayload ): Promise<void> {
             log.debug( `Source ${ipRecord.destinationIp} matched Map` )
             await createSecurityHubFinding( ipRecord )
 
-        } else if ( ipRangeCheck( ipRecord.destinationIp, ipRangesList ) ) {
+        } else if ( ipCompare( ipRecord.destinationIp ) ) {
             badIps.push( ipRecord )
             log.debug( `Source ${ipRecord.destinationIp} matched List` )
             await createSecurityHubFinding( ipRecord )
@@ -177,7 +178,7 @@ async function checkRecords( payload: KinesisPayload ): Promise<void> {
  * Creates/updates a finding in Security Hub when malicious traffic is identified.
  * @param {IpRecord} ipRecord 
  */
-async function createSecurityHubFinding( ipRecord: IpRecord ): Promise<void> {
+export async function createSecurityHubFinding( ipRecord: IpRecord ): Promise<void> {
 
     const currentTime = ( new Date ).toISOString()
 
@@ -273,7 +274,7 @@ async function createSecurityHubFinding( ipRecord: IpRecord ): Promise<void> {
  * @param {KinesisPayload} payload - The payload from the Kinesis Firehose
  * @returns {HttpResponse} - An HTTP Response object
  */
-function buildResponse( payload: KinesisPayload ): HttpResponse {
+export function buildResponse( payload: KinesisPayload ): HttpResponse {
 
     const body = JSON.stringify( {
         requestId: payload.requestId,
@@ -296,7 +297,7 @@ function buildResponse( payload: KinesisPayload ): HttpResponse {
  * Takes the list of IP Lists from the global variable at the beginning of the file and generates
  * a Map object of IP addresses and an array of CIDR ranges to check IPs against
  */
-async function buildList(): Promise<void> {
+export async function buildList(): Promise<void> {
 
     // Lists are gathered asynchronously for speed efficiency
     const lists: AxiosResponse<any, any>[] = await Promise.all( sourceLists.map( async ( list: string ) => {
@@ -310,7 +311,8 @@ async function buildList(): Promise<void> {
      */
     if ( TESTING ) {
         ipMap.set( '8.8.8.8', null )
-        ipRangesList.push( '1.1.1.0/24' )
+        const range = IPv4CidrRange.fromCidr( '1.1.1.0/24' )
+        ipRanges.set( '1.1.1.0/24', { first: range.getFirst().toString(), last: range.getLast().toString() } )
     }
 
 
@@ -331,11 +333,45 @@ async function buildList(): Promise<void> {
             if ( ip.indexOf( '/' ) === -1 ) {
                 ipMap.set( ip, null )
             } else {
-                if ( !ipRangesList.includes( ip ) ) {
-                    ipRangesList.push( ip )
+                if ( !ipRanges.has( ip ) ) {
+                    const range = IPv4CidrRange.fromCidr( ip )
+                    ipRanges.set( ip, { first: range.getFirst().toString(), last: range.getLast().toString() } )
                 }
             }
         }
     }
+
+}
+
+
+/**
+ * Checks to see if a specific IP address is included in a CIDR range by checking each octect against
+ * the first and last IP for the range. This was used instead of other available "includes" methods
+ * because it is substantially faster.
+ * @param {string} ip - IP address to be checked
+ * @returns {boolean} boolean based on if the provided IP is included in any CIDR range in the provided
+ * IP ranges
+ */
+export function ipCompare( ip: string ): boolean {
+
+    for ( let value of ipRanges.values() ) {
+        const ipSplit = ip.split( '.' )
+        const lastSplit = value.last.split( '.' )
+        const firstSplit = value.first.split( '.' )
+        if (
+            Number( ipSplit[ 0 ] ) >= Number( firstSplit[ 0 ] ) &&
+            Number( ipSplit[ 0 ] ) <= Number( lastSplit[ 0 ] ) &&
+            Number( ipSplit[ 1 ] ) >= Number( firstSplit[ 1 ] ) &&
+            Number( ipSplit[ 1 ] ) <= Number( lastSplit[ 1 ] ) &&
+            Number( ipSplit[ 2 ] ) >= Number( firstSplit[ 2 ] ) &&
+            Number( ipSplit[ 2 ] ) <= Number( lastSplit[ 2 ] ) &&
+            Number( ipSplit[ 3 ] ) >= Number( firstSplit[ 3 ] ) &&
+            Number( ipSplit[ 3 ] ) <= Number( lastSplit[ 3 ] )
+        ) {
+            return true
+        }
+
+    }
+    return false
 
 }
