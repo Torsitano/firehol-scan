@@ -63,17 +63,19 @@
 </code></pre>
 <p>Map and Set were pretty similar, but <code>map.has()</code> was roughly 16,850x faster than iterating through the array. This is substantial when attempting to do near-real time scanning.</p>
 
-<a href="#expanding-vs-not-expanding-ip-ranges" id="expanding-vs-not-expanding-ip-ranges" style="color: inherit; text-decoration: none;">
-  <h2>Expanding vs Not Expanding IP Ranges</h2>
+<a href="#checking-cidr-ranges-for-an-ip" id="checking-cidr-ranges-for-an-ip" style="color: inherit; text-decoration: none;">
+  <h2>Checking CIDR Ranges for an IP</h2>
 </a>
 <p>My initial intent was to take the CIDR ranges from the lists and expand them to individual IPs, since the performance of the Map is so good and doesn&#39;t increase much with size. Unfortunately this wasn&#39;t as straightforward as intended, the process of expanding many CIDR ranges caused RAM utilization issues. While giving the Lambda a lot of RAM and increasing what node was allowed to use likely would have allowed it to run, I didn&#39;t like this approach.</p>
-<p>I may revisit in the future to see if there is a way to streamline this process and avoid memory issues, but was more than I wanted to do at the moment. Instead, IPs are checked against CIDR ranges using <a href="https://github.com/danielcompton/ip-range-check">ip-range-check</a>, which isn&#39;t nearly as performant as a Map.</p>
+<p>My first pass on this was to use a function available through a package called <a href="https://github.com/danielcompton/ip-range-check">ip-range-check</a> and check every IP against an array of all the CIDR ranges, but this took about 1 ms per CIDR range. This causes significant delays when checking a lot of IPs, and was not ideal.</p>
+<p>To get around this, I modified the code to store the CIDR ranges as a Map instead, with the value set as an object of the first and last IP in the CIDR range. The provided IP is split by octet, converted to a number, and checked to see if it is within the first and last IP. This approach is approximately 50x faster than the previous <code>ip-range-check</code> approach.</p>
+<p>The first/last IPs are split for each compare, it was easier to work with the map in this format and the speed difference was only <code>~.002 ms</code> per CIDR range in my testing.</p>
 
 <a href="#only-checking-destination-ip-not-checking-private-ips-and-removing-duplicate-ips" id="only-checking-destination-ip-not-checking-private-ips-and-removing-duplicate-ips" style="color: inherit; text-decoration: none;">
   <h2>Only Checking Destination IP, Not Checking Private IPs, and Removing Duplicate IPs</h2>
 </a>
 <p>Since the check against a CIDR range is much less performant than querying a Map, and every list must be checked for each IP, I wanted to minimize the number of IPs that I was checking as much as possible.</p>
-<p>The easiest decision for that was to not check private IPs. Since the intent is to scan for malicious activity against public IP lists, there was no reason to scan traffic going to IPs in the RFC1918 space. This is done using <code>startsWith()</code> and looking at the first octets of each IP, skipping over anything in the <code>10.</code>, <code>192.168</code>, and <code>172.16</code>-<code>172.31</code> space.</p>
+<p>The easiest decision for that was to not check private IPs. Since the intent is to scan for malicious activity against public IP lists, there was no reason to scan traffic going to IPs in the RFC1918 space. This is done using <code>startsWith()</code> and looking at the first octets of each IP, skipping over anything in the <code>10.</code>, <code>192.168</code>, and <code>172.16</code>-<code>172.31</code> space. <code>startsWith()</code> was chosen over other options because of speed, in my testing it took roughly <code>0.006 ms</code> vs <code>~1 ms</code> for the <code>ip-range-check</code> function.</p>
 <p>I also figured that only looking at outbound traffic was sufficient for this. Since in most situations network traffic will be two ways(for established connections), there was no reason to check both source and destination IPs for each event. This also prevents scanning of traffic that could be rejected by your servers/Security Groups/etc, which is traffic that wouldn&#39;t be worth alerting on.</p>
 <p>Lastly, the Lambda generates and keeps a Map of consisting of the Source IP, Destination IP, and Destination Port as a concatenated string as the Map key, and skips over processing duplicates. This is only persistent as long as the Lambda Execution Environment is active, but prevents a lot of duplicate processing.</p>
 
@@ -84,9 +86,11 @@
 <li>Move list config out of Lambda and into a config file</li>
 <li>Modify retrieval method to get more up to date lists from the site, since there is a delay with GitHub</li>
 <li>Convert to Rust for better speed</li>
-<li>Add the ability to pass in additional lists as desired</li>
+<li>Add the ability to pass in additional non-Firehol lists as desired</li>
 <li>Convert the Flow Logs IaC to the L2 Construct when it supports Kinesis as a destination</li>
 <li>Better severity handling for Findings</li>
+<li>Add unit tests</li>
+<li>Evaluate the Kinesis Transform option to expand CIDR ranges and remove duplicates/extra IPs</li>
 </ul>
 </div></div>
 <div class="col-4 col-menu menu-sticky-wrap menu-highlight">
